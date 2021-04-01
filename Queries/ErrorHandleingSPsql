@@ -1,0 +1,120 @@
+    DROP TABLE IF EXISTS Errors
+    GO
+
+    CREATE TABLE Errors (
+        ERROR_ID                    INT                     PRIMARY KEY                 IDENTITY,
+        ERROR_LINE                  INT,
+        ERROR_MESSAGE               NVARCHAR(1000),
+        ERROR_NUMBER                INT,
+        ERROR_PROCEDURE             NVARCHAR(1000),
+        ERROR_SEVERITY              INT,
+        ERROR_STATE                 INT,
+        PARAMS                      XML,
+        SYSUSER                     VARCHAR(200)            DEFAULT(SYSTEM_USER),
+        ERROR_DATE_TIME             DATETIME                DEFAULT(GETDATE()),
+        RESOLVED_DATETIME           DATETIME                DEFAULT(NULL)               NULL,
+        RESOLVED_BY                 VARCHAR(200)            DEFAULT(NULL)               NULL  
+    )
+    GO
+
+/* XML example
+    <users>
+        <user>
+            <firstName>Tom</firstName>
+            <lastName>Ryan</lastName>
+            <age>22</age>
+            <pets>
+                <pet>
+                    <name>Buffy</name>
+                    <age>10</age>
+                </pet>
+            </pets>
+        </user>
+        <user>
+            <firstName>Sally</firstName>
+            <lastName>Right</lastName>
+            <age>21</age>
+            <pets></pets>
+        </user>
+    </users>
+*/
+    DROP PROCEDURE IF EXISTS spRecordError 
+    GO
+
+    CREATE PROCEDURE spRecordError 
+        @params XML
+    AS BEGIN
+        INSERT INTO Errors(
+                 ERROR_LINE             ,ERROR_MESSAGE
+                ,ERROR_NUMBER           ,ERROR_PROCEDURE
+                ,ERROR_SEVERITY         ,ERROR_STATE
+                ,PARAMS
+        ) VALUES (
+             ERROR_LINE()               ,ERROR_MESSAGE()
+            ,ERROR_NUMBER()             ,ERROR_PROCEDURE()
+            ,ERROR_SEVERITY()           ,ERROR_STATE()
+            ,@params
+        )
+    END
+    GO
+
+    DROP PROCEDURE IF EXISTS spDivide 
+    GO 
+
+    ------------------------------------------------
+
+    CREATE PROCEDURE spDivide
+        @nom    FLOAT,
+        @den    FLOAT
+    AS BEGIN
+        DECLARE @result FLOAT
+        
+        BEGIN TRY
+        SET @result = @nom / @den 
+        END TRY BEGIN CATCH
+            DECLARE @params XML = ( SELECT   [@nom] = CAST(@nom AS DECIMAL(19, 2)),
+                                             [@den] = CAST(@den AS DECIMAL(19, 2))
+                                    FOR XML PATH('parameters')
+                                  )
+            EXEC spRecordError @params
+        END CATCH
+        SELECT [result] = @result
+    END
+    GO
+
+/* HOW TO MAKE XML
+    SELECT  [name] = 'Sally Right',
+            [age]  = 21
+    FOR XML PATH('friend') 
+*/
+
+/*
+    DECIMAL(p, [s])
+    p           bytes
+    -----       -----
+    1-9            5
+    10-19          9
+    20-28          13
+    29-38          17
+*/
+
+    ------------------------------------------------
+
+    EXEC spDivide 44, 0
+
+    SELECT * FROM master.sys.messages
+    WHERE language_id = 1033
+
+    SELECT * FROM Errors
+
+
+    SELECT  *,
+            [Invoices] = (
+                SELECT *
+                FROM Invoices 
+                WHERE VendorID = v.VendorID
+                FOR XML PATH('Invoice'), TYPE
+            )
+    FROM Vendors v  
+    WHERE VendorID IN (SELECT DISTINCT VendorID FROM Invoices)
+    FOR XML PATH('Vendor'), ROOT('Vendors')
